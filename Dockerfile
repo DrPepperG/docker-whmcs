@@ -12,6 +12,7 @@ RUN apk add --no-cache \
   nginx \
   tar \
   gzip \
+  su-exec \
   php81 \
   php81-fpm \
   php81-mysqli \
@@ -29,17 +30,15 @@ RUN apk add --no-cache \
   php81-mbstring \
   php81-curl \
   php81-pdo_mysql \
-  dcron \
-  libcap \
   supervisor
-
-# Crontab enabler
-RUN chown nobody:nobody /usr/sbin/crond \
-    && setcap cap_setgid=ep /usr/sbin/crond
 
 # Copy Entrypoint
 COPY ./entrypoint.sh /var
 RUN chmod +x /var/entrypoint.sh
+
+# Configure cron
+RUN echo "* * * * * php81 -q /var/www/whmcs/crons/cron.php" >> /var/spool/cron/crontabs/root && \
+    chmod u+s /sbin/su-exec
 
 # Configure nginx
 COPY config/nginx.conf /etc/nginx/nginx.conf
@@ -54,17 +53,20 @@ COPY config/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Install ioncube loader
 RUN curl -o /tmp/ioncube.tar.gz https://downloads.ioncube.com/loader_downloads/ioncube_loaders_lin_x86-64.tar.gz && \
-  tar -xvf /tmp/ioncube.tar.gz -C /tmp/ && \
-  mkdir -p /usr/lib/php/ioncube && \
-  cp /tmp/ioncube/ioncube_loader_lin_8.1.so /usr/lib/php/ioncube/. && \
-  echo 'zend_extension = /usr/lib/php/ioncube/ioncube_loader_lin_8.1.so' > /etc/php81/php.ini && \
-  rm -r /tmp/*
-
-# Install crontabs
-RUN echo "* * * * * /usr/bin/php81 -q /var/www/whmcs/crons/cron.php" >> /var/spool/cron/crontabs/nobody && touch /var/log/crond
+    tar -xvf /tmp/ioncube.tar.gz -C /tmp/ && \
+    mkdir -p /usr/lib/php/ioncube && \
+    cp /tmp/ioncube/ioncube_loader_lin_8.1.so /usr/lib/php/ioncube/. && \
+    echo 'zend_extension = /usr/lib/php/ioncube/ioncube_loader_lin_8.1.so' > /etc/php81/php.ini && \
+    rm -r /tmp/*
 
 # Make sure files/folders needed by the processes are accessable when they run under the nobody user
-RUN chown -R nobody:nobody /var/www/whmcs /run /var/lib/nginx /var/log/nginx /var/lib/php81 /var/lib/php81/sessions /var/log/crond
+RUN chown -R nobody:nobody \
+    /var/www/whmcs \
+    /run \
+    /var/lib/nginx \
+    /var/log/nginx \
+    /var/lib/php81 \
+    /var/lib/php81/sessions
 
 # Switch to use a non-root user from here on
 USER nobody
